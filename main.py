@@ -143,6 +143,218 @@ PLANS = {
 ) = range(7)
 
 # ==================== PYROGRAM CLIENT MANAGER ====================
+# ==================== AUTOBC MANAGER ====================
+class AutoBCManager:
+    """Manager untuk Auto Broadcast"""
+    
+    def __init__(self):
+        self.active_tasks = {}      # {user_id: asyncio.Task}
+        self.bc_status = {}         # {user_id: {'running': bool, 'count': int, 'targets': []}}
+        self.templates = {}         # {user_id: {template_name: content}}
+        self.scheduled_tasks = {}   # {user_id: [scheduled_jobs]}
+    
+    async def start_autobc(self, client, user_id, message_text, interval=60, 
+                          forward=False, reply_msg=None, targets=None):
+        """Mulai auto broadcast"""
+        
+        # Stop yang sudah berjalan dulu
+        if user_id in self.active_tasks:
+            self.stop_autobc(user_id)
+        
+        # Default: semua grup
+        if not targets:
+            targets = []
+            async for dialog in client.get_dialogs():
+                if dialog.chat.type in ["group", "supergroup"]:
+                    targets.append(dialog.chat.id)
+        
+        if not targets:
+            return False, "Tidak ada grup target!"
+        
+        self.bc_status[user_id] = {
+            'running': True,
+            'count': 0,
+            'targets': targets,
+            'interval': interval,
+            'forward': forward,
+            'start_time': datetime.now().isoformat()
+        }
+        
+        async def broadcast_loop():
+            while self.bc_status.get(user_id, {}).get('running', False):
+                for target in targets:
+                    if not self.bc_status.get(user_id, {}).get('running'):
+                        break
+                    
+                    try:
+                        if forward and reply_msg:
+                            await reply_msg.forward(target)
+                        else:
+                            await client.send_message(target, message_text)
+                        
+                        self.bc_status[user_id]['count'] += 1
+                        
+                        # Delay antar grup (anti-flood)
+                        await asyncio.sleep(2)
+                        
+                    except FloodWait as e:
+                        await asyncio.sleep(e.value)
+                    except Exception as e:
+                        logger.error(f"BC error to {target}: {e}")
+                        continue
+                
+                # Delay antar siklus
+                await asyncio.sleep(interval)
+        
+        # Jalankan di background
+        task = asyncio.create_task(broadcast_loop())
+        self.active_tasks[user_id] = task
+        
+        return True, f"AutoBC started! Targets: {len(targets)}"
+    
+    def stop_autobc(self, user_id):
+        """Hentikan auto broadcast"""
+        if user_id in self.bc_status:
+            self.bc_status[user_id]['running'] = False
+        
+        if user_id in self.active_tasks:
+            self.active_tasks[user_id].cancel()
+            del self.active_tasks[user_id]
+            return True
+        return False
+    
+    def get_status(self, user_id):
+        """Cek status autobc"""
+        return self.bc_status.get(user_id)
+    
+    def save_template(self, user_id, name, content):
+        """Simpan template pesan"""
+        if user_id not in self.templates:
+            self.templates[user_id] = {}
+        self.templates[user_id][name] = content
+        return True
+    
+    def get_template(self, user_id, name):
+        """Ambil template"""
+        return self.templates.get(user_id, {}).get(name)
+    
+    def list_templates(self, user_id):
+        """List semua template"""
+        return list(self.templates.get(user_id, {}).keys())
+
+# Global instance
+autobc_manager = AutoBCManager()
+
+
+# ==================== PM PERMIT MANAGER ====================
+class PMPermitManager:
+    """Manager untuk PM Permit (anti-spam private message)"""
+    
+    def __init__(self):
+        self.enabled = {}           # {user_id: bool}
+        self.approved = {}          # {user_id: [user_ids]}
+        self.blocked = {}           # {user_id: [user_ids]}
+        self.temp_msg = {}          # {user_id: str}
+        self.warn_count = {}        # {(owner_id, user_id): count}
+        self.max_warn = 3
+    
+    def enable(self, user_id, message=None):
+        """Enable PM Permit"""
+        self.enabled[user_id] = True
+        self.approved[user_id] = []
+        self.blocked[user_id] = []
+        self.temp_msg[user_id] = message or self.get_default_msg()
+        return True
+    
+    def disable(self, user_id):
+        """Disable PM Permit"""
+        self.enabled[user_id] = False
+        return True
+    
+    def is_enabled(self, user_id):
+        """Cek status"""
+        return self.enabled.get(user_id, False)
+    
+    def approve(self, owner_id, user_id):
+        """Approve user"""
+        if owner_id not in self.approved:
+            self.approved[owner_id] = []
+        if user_id not in self.approved[owner_id]:
+            self.approved[owner_id].append(user_id)
+            return True
+        return False
+    
+    def disapprove(self, owner_id, user_id):
+        """Hapus approve"""
+        if owner_id in self.approved and user_id in self.approved[owner_id]:
+            self.approved[owner_id].remove(user_id)
+            return True
+        return False
+    
+    def block(self, owner_id, user_id):
+        """Block user"""
+        if owner_id not in self.blocked:
+            self.blocked[owner_id] = []
+        if user_id not in self.blocked[owner_id]:
+            self.blocked[owner_id].append(user_id)
+            return True
+        return False
+    
+    def unblock(self, owner_id, user_id):
+        """Unblock user"""
+        if owner_id in self.blocked and user_id in self.blocked[owner_id]:
+            self.blocked[owner_id].remove(user_id)
+            return True
+        return False
+    
+    def is_approved(self, owner_id, user_id):
+        """Cek apakah user diapprove"""
+        return user_id in self.approved.get(owner_id, [])
+    
+    def is_blocked(self, owner_id, user_id):
+        """Cek apakah user diblock"""
+        return user_id in self.blocked.get(owner_id, [])
+    
+    def get_default_msg(self):
+        """Pesan default PM Permit"""
+        return """⚠️ **PM SECURITY**
+
+Halo! Saya adalah assistant bot.
+Owner saya sedang sibuk.
+
+Pesan Anda telah saya log.
+Mohon tunggu balasan dari owner.
+
+⛔ **Jangan spam atau Anda akan diblokir!**
+"""
+    
+    def get_message(self, user_id):
+        """Ambil pesan custom atau default"""
+        return self.temp_msg.get(user_id, self.get_default_msg())
+    
+    def set_message(self, user_id, message):
+        """Set pesan custom"""
+        self.temp_msg[user_id] = message
+        return True
+    
+    def get_warn(self, owner_id, user_id):
+        """Get warn count"""
+        return self.warn_count.get((owner_id, user_id), 0)
+    
+    def add_warn(self, owner_id, user_id):
+        """Tambah warn"""
+        key = (owner_id, user_id)
+        self.warn_count[key] = self.warn_count.get(key, 0) + 1
+        return self.warn_count[key]
+    
+    def reset_warn(self, owner_id, user_id):
+        """Reset warn"""
+        key = (owner_id, user_id)
+        if key in self.warn_count:
+            del self.warn_count[key]
+
+# Global instance
+pmpermit_manager = PMPermitManager()
 class UserbotManager:
     """Manage multiple Pyrogram clients"""
     
