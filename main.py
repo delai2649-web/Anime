@@ -21,13 +21,13 @@ from pyrogram.errors import (
 )
 
 # ==================== KONFIGURASI ====================
-TOKEN = os.getenv("TOKEN", "YOUR_BOT_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))
+TOKEN = os.getenv("TOKEN", "8207231899:AAFe662S9JZ7fsW4glMuqrx2kp1Rz2x5Aeg")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "1855623479"))
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb+srv://user:pass@cluster.mongodb.net/userbot_db")
 
 # Pyrogram API (dari my.telegram.org)
-API_ID = int(os.getenv("API_ID", "2040"))
-API_HASH = os.getenv("API_HASH", "b18441a1ff607e10a989891a5462e627")
+API_ID = int(os.getenv("API_ID", "30565875"))
+API_HASH = os.getenv("API_HASH", "cad29b6c102e18181230d683f4859eae")
 
 # Flask keep alive
 app = Flask(__name__)
