@@ -23,7 +23,7 @@ from pyrogram.errors import (
 # ==================== KONFIGURASI ====================
 TOKEN = os.getenv("TOKEN", "8207231899:AAFe662S9JZ7fsW4glMuqrx2kp1Rz2x5Aeg")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "1855623479"))
-MONGODB_URI = os.getenv("MONGODB_URI", "mongodb+srv://user:pass@cluster.mongodb.net/userbot_db")
+MONGODB_URI = os.getenv("MONGODB_URI", "mongodb+srv://userbot:<db_password>@cluster0.oangcru.mongodb.net/?appName=Cluster0")
 
 # Pyrogram API (dari my.telegram.org)
 API_ID = int(os.getenv("API_ID", "30565875"))
